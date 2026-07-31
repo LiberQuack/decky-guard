@@ -50,17 +50,17 @@ systemctl --user daemon-reload
 systemctl --user enable "$SERVICE"
 
 # --- 3. passwordless sudo for the root helper only -----------------------
-echo "  configuring passwordless sudo for $ROOT_HELPER"
+# Stage to a fixed temp file (never glob later). The staging copy is owned by
+# the invoking user because curl | bash runs as them; the 'install' step below
+# rewrites it into /etc/sudoers.d with the correct 0440 root:root owner/perms
+# that sudo requires. visudo validation fails fast before any install.
+STAGE="$(mktemp --tmpdir decky-guard.sudoers.XXXXXX)"
+trap 'rm -f "$STAGE"' EXIT
 sudo -v
-cat > "$(mktemp /tmp/decky-guard.XXXXXX.sudoers)" <<EOF
-# Allow $DECKY_USER to run ONLY the Decky reinstall helper without a password.
-$DECKY_USER ALL=(root) NOPASSWD: $ROOT_HELPER
-EOF
-# validate before installing
-tmp="$(ls -t /tmp/decky-guard.*.sudoers | head -1)"
-sudo visudo -c -f "$tmp" >/dev/null   # fails fast on syntax error
-sudo install -m 0440 -o root -g root "$tmp" "$SUDOERS_FILE"
-rm -f "$tmp"
+printf '# Allow %s to run ONLY the Decky reinstall helper without a password.\n%s ALL=(root) NOPASSWD: %s\n' \
+  "$DECKY_USER" "$DECKY_USER" "$ROOT_HELPER" > "$STAGE"
+sudo visudo -c -f "$STAGE" >/dev/null   # fails fast on syntax error
+sudo install -m 0440 -o root -g root "$STAGE" "$SUDOERS_FILE"
 
 # --- 4. Run once immediately ---------------------------------------------
 echo "  running one-shot check now..."

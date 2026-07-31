@@ -54,22 +54,30 @@ scoped rule that lets the watchdog run its single helper passwordlessly.
 **Manual (if you already have the repo):**
 
 ```sh
+# these resolve your real username + home at runtime (nothing hardcoded)
+usr=$(id -un); home=$(eval echo "~$usr")
+
 # copy the scripts + unit into place
-mkdir -p ~/.local/bin ~/.config/systemd/user
-cp scripts/decky-guard.sh scripts/decky-guard-root.sh   ~/.local/bin/
-cp systemd/decky-guard.service                          ~/.config/systemd/user/
-chmod 755 ~/.local/bin/decky-guard.sh ~/.local/bin/decky-guard-root.sh
+mkdir -p "$home/.local/bin" "$home/.config/systemd/user"
+cp scripts/decky-guard.sh scripts/decky-guard-root.sh   "$home/.local/bin/"
+cp systemd/decky-guard.service                          "$home/.config/systemd/user/"
+chmod 755 "$home/.local/bin/decky-guard.sh" "$home/.local/bin/decky-guard-root.sh"
 
 # allow the root helper to run without a password (single command only)
-sudo install -m 0440 -o root -g root <(echo "quack ALL=(root) NOPASSWD: /home/quack/.local/bin/decky-guard-root.sh") /etc/sudoers.d/decky-guard
+stage="$(mktemp)"
+printf '# Allow %s to run ONLY the Decky reinstall helper without a password.\n%s ALL=(root) NOPASSWD: %s\n' \
+  "$usr" "$usr" "$home/.local/bin/decky-guard-root.sh" > "$stage"
+sudo visudo -c -f "$stage"   # validate before installing
+sudo install -m 0440 -o root -g root "$stage" /etc/sudoers.d/decky-guard
+rm -f "$stage"
 
 # run once per login
 systemctl --user daemon-reload
 systemctl --user enable --now decky-guard.service
 ```
 
-> The sudoers example above is illustrative — `remote_install.sh` computes the
-> real username and home automatically and never hardcodes anything.
+> The sudoers file must end in a newline and be mode `0440 root:root` for sudo
+> to accept it. `remote_install.sh` (and the snippet above) enforce this.
 
 ## Layout
 
