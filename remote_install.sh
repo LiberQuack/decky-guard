@@ -62,6 +62,21 @@ printf '# Allow %s to run ONLY the Decky reinstall helper without a password.\n%
 sudo visudo -c -f "$STAGE" >/dev/null   # fails fast on syntax error
 sudo install -m 0440 -o root -g root "$STAGE" "$SUDOERS_FILE"
 
+# --- 3b. SteamOS survival: register our /etc files in atomic-update.conf.d ---
+# On Steam Deck/SteamOS (3.6+) only /etc files listed here are carried over
+# across an A/B image update; anything else is discarded. Registering the
+# sudoers rule and the systemd (system) unit here makes the guard survive a
+# SteamOS update. On normal hosts (e.g. CachyOS) the directory does not exist
+# and this is skipped automatically.
+if sudo test -d /etc/atomic-update.conf.d; then
+  ATOMIC_CONF="/etc/atomic-update.conf.d/decky-guard.conf"
+  sudo tee "$ATOMIC_CONF" >/dev/null <<'EOF'
+/etc/sudoers.d/decky-guard
+/etc/systemd/system/plugin_loader.service
+EOF
+  echo "  SteamOS detected: registered /etc files to survive updates ($ATOMIC_CONF)"
+fi
+
 # --- 4. Run once immediately ---------------------------------------------
 echo "  running one-shot check now..."
 "$BIN_DIR/decky-guard.sh" || true

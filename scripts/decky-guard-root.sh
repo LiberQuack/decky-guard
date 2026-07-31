@@ -125,4 +125,17 @@ systemctl daemon-reload
 systemctl enable plugin_loader 2>/dev/null
 systemctl restart plugin_loader || fail "could not (re)start plugin_loader service"
 
+# --- SteamOS survival --------------------------------------------------
+# On Steam Deck/SteamOS (3.6+) only /etc files listed in
+# /etc/atomic-update.conf.d are carried across an A/B image update; anything
+# else is discarded. Register the sudoers rule and system unit so the guard
+# survives an update. Skipped automatically on normal hosts (dir absent).
+if [ -d /etc/atomic-update.conf.d ]; then
+  cat > /etc/atomic-update.conf.d/decky-guard.conf <<'EOF'
+/etc/sudoers.d/decky-guard
+/etc/systemd/system/plugin_loader.service
+EOF
+  echo "decky-guard-root: SteamOS detected — registered /etc files to survive updates."
+fi
+
 echo "decky-guard-root: done."

@@ -127,6 +127,40 @@ systemctl --user daemon-reload
 
 This does **not** remove Decky itself or your plugins/settings.
 
+## SteamOS updates: how `/etc` files are handled
+
+On **Steam Deck / SteamOS** the OS updates by writing a brand-new root image
+onto the opposite A/B partition and rebooting into it. `/etc` is a writable
+**overlay** (actual data under `/var/lib/overlays/etc/upper/`, which is rsynced
+onto the new side), so changes normally persist. **However, since SteamOS 3.6
+only `/etc` files that are listed in `/etc/atomic-update.conf.d/*.conf` are
+carried over to the new image** — anything not whitelisted is discarded (a copy
+is kept under `/etc/previous/` and in `/var/lib/steamos-atomupd/etc_backup/`).
+
+Because of that, on SteamOS the installer **also registers** the sudoers rule
+and the `plugin_loader.service` unit in:
+
+```conf
+/etc/atomic-update.conf.d/decky-guard.conf
+  /etc/sudoers.d/decky-guard
+  /etc/systemd/system/plugin_loader.service
+```
+
+so the guard survives an OS update. On normal persistent-root Linux (e.g.
+CachyOS/Arch) `/etc/atomic-update.conf.d` does not exist and this step is
+skipped automatically — files are already persistent there.
+
+This is why Decky (and these files) can vanish on SteamOS after an update but
+not on CachyOS. Re-running the installer (or the guard itself) restores them.
+
+## Notes on `/etc` NOT surviving (the guard itself)
+
+The guard's **user-level** parts live under `~/.local/bin` and
+`~/.config/systemd/user`, both under `/home`, which is fully persistent across
+SteamOS updates — so the watchdog itself keeps working. What an update can
+discard is the **system**-side bits (`/etc/sudoers.d` rule, system unit), which
+is exactly what the `atomic-update.conf.d` registration protects.
+
 ## Security notes
 
 - Passwordless sudo is **scoped to a single helper** (`decky-guard-root.sh`).
