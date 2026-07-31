@@ -1,0 +1,132 @@
+# Decky Guard
+
+A small self-healing watchdog for [Decky Loader](https://github.com/SteamDeckHomebrew/decky-loader).
+
+Decky can disappear or break — for example when a SteamOS-style system update
+wipes the loader's systemd unit, or when the loader's service stops while its
+files are still on disk. **Decky Guard runs once after every login, checks
+whether Decky is actually healthy, and reinstalls it (via the official
+SteamDeckHomebrew GitHub installer) only if it is missing or broken.**
+
+## What it checks
+
+The health check runs in **two stages**:
+
+1. **Fast user-level proxy** — the loader binary exists/executable and the
+   systemd unit file is present on disk (catches the "wiped after update" case).
+2. **Privileged runtime check** — delegated to a root helper that inspects the
+   real system service: is it `active`, `enabled`, a non-trivial binary size
+   (not truncated), has a completed `.loader.version`, and is it **not
+   crash-looping** (`NRestarts < 5`). This catches Decky "being broken" even
+   when the files are present.
+
+If any check fails, it re-runs the official installer and restarts the service.
+
+## Channel policy
+
+The installed Decky build is matched to the Steam client channel, auto-detected
+from `~/.steam/steam/package/beta`:
+
+| Steam client channel            | Decky build installed |
+| ------------------------------- | --------------------- |
+| stable / default (no beta file) | latest **stable**     |
+| `*beta*`                        | latest **prerelease** |
+
+## Requirements
+
+- Linux with a graphical user session (Steam Deck gamepad, or a desktop host
+  with Steam installed).
+- `curl`, `jq`, `systemd`, and `sudo` (password privileges to install the
+  sudoers rule).
+- Network access to GitHub.
+
+## Install
+
+**Remote one-shot:**
+
+```sh
+curl -fsSL https://github.com/LiberQuack/decky-guard/raw/HEAD/remote_install.sh | bash
+```
+
+You will be asked for your `sudo` password once — it is used only to create a
+scoped rule that lets the watchdog run its single helper passwordlessly.
+
+**Manual (if you already have the repo):**
+
+```sh
+# copy the scripts + unit into place
+mkdir -p ~/.local/bin ~/.config/systemd/user
+cp scripts/decky-guard.sh scripts/decky-guard-root.sh   ~/.local/bin/
+cp systemd/decky-guard.service                          ~/.config/systemd/user/
+chmod 755 ~/.local/bin/decky-guard.sh ~/.local/bin/decky-guard-root.sh
+
+# allow the root helper to run without a password (single command only)
+sudo install -m 0440 -o root -g root <(echo "quack ALL=(root) NOPASSWD: /home/quack/.local/bin/decky-guard-root.sh") /etc/sudoers.d/decky-guard
+
+# run once per login
+systemctl --user daemon-reload
+systemctl --user enable --now decky-guard.service
+```
+
+> The sudoers example above is illustrative — `remote_install.sh` computes the
+> real username and home automatically and never hardcodes anything.
+
+## Layout
+
+```
+decky-guard/
+├── remote_install.sh            # curl one-shot installer
+├── scripts/
+│   ├── decky-guard.sh           # user-level health check + trigger
+│   └── decky-guard-root.sh      # root helper (install / check), scoped-sudo target
+└── systemd/
+    └── decky-guard.service      # one-shot unit, once per login (graphical-session)
+```
+
+**Installed locations:**
+
+| Source | Installed to | Purpose |
+| ------ | ------------ | ------- |
+| `scripts/decky-guard.sh` | `~/.local/bin/decky-guard.sh` | decides channel, checks health, triggers install |
+| `scripts/decky-guard-root.sh` | `~/.local/bin/decky-guard-root.sh` | runs the official installer / deep check as root |
+| `systemd/decky-guard.service` | `~/.config/systemd/user/decky-guard.service` | runs the check once per login |
+| — | `/etc/sudoers.d/decky-guard` | passwordless sudo for the single helper |
+
+## Run / debug
+
+```sh
+# run the check manually (loud) — will reinstall Decky if unhealthy
+~/.local/bin/decky-guard.sh
+
+# deep-check only (no install), as the root helper sees it
+sudo ~/.local/bin/decky-guard-root.sh check
+
+# view the log
+tail -f ~/.local/state/decky-guard/decky-guard.log
+```
+
+After an automatic reinstall, **restart Steam** for the Decky UI to appear.
+
+## Uninstall
+
+```sh
+systemctl --user disable --now decky-guard.service
+sudo rm -f /etc/sudoers.d/decky-guard
+rm -f ~/.local/bin/decky-guard.sh ~/.local/bin/decky-guard-root.sh \
+      ~/.config/systemd/user/decky-guard.service
+systemctl --user daemon-reload
+```
+
+This does **not** remove Decky itself or your plugins/settings.
+
+## Security notes
+
+- Passwordless sudo is **scoped to a single helper** (`decky-guard-root.sh`).
+  The helper only accepts `check`, `install`, or `reinstall` with a validated
+  `stable`/`beta` channel, and is otherwise self-contained.
+- The user and home directory are always computed at runtime — no hardcoded
+  username.
+
+## License
+
+MIT

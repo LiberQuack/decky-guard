@@ -1,0 +1,13 @@
+[Unit]
+Description=Decky Loader self-healing watchdog (one-shot after login)
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/decky-guard.sh --silent
+RemainAfterExit=yes
+
+[Install]
+WantedBy=graphical-session.target

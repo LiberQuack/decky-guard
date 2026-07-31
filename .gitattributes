@@ -1,0 +1,4 @@
+# Keep scripts LF on all systems (bash fails with CRLF)
+* text=auto eol=lf
+
+*.sh text eol=lf
