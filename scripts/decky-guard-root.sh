@@ -20,8 +20,7 @@ fail() {
   exit 1
 }
 
-MODE="${1:-install}"
-CHANNEL="${2:-}"
+CHANNEL="${1:-stable}"
 SERVICE="plugin_loader"
 
 # Determine the target user dynamically. sudo sets SUDO_USER to the invoking
@@ -34,43 +33,7 @@ fi
 DECKY_HOME="$(getent passwd "$DECKY_USER" | cut -d: -f6)"
 [ -n "$DECKY_HOME" ] || fail "could not resolve home for user $DECKY_USER"
 HOMEBREW="$DECKY_HOME/homebrew"
-PLUGIN_LOADER="$HOMEBREW/services/PluginLoader"
-UNIT="/etc/systemd/system/${SERVICE}.service"
 
-if [ "$MODE" = "check" ]; then
-  # Report health. Exit 0 if healthy, 1 if unhealthy. No install is done.
-  health_fail="0"
-
-  [ -x "$PLUGIN_LOADER" ]                    || { health_fail=1; echo "bad: loader binary missing"; }
-  [ -f "$UNIT" ]                              || { health_fail=1; echo "bad: system unit missing"; }
-  [ -f "$HOMEBREW/services/.loader.version" ] || { health_fail=1; echo "bad: no .loader.version"; }
-
-  [ "$(stat -c '%s' "$PLUGIN_LOADER" 2>/dev/null)" -gt 1000000 ] || { health_fail=1; echo "bad: loader binary is empty/truncated"; }
-
-  if ! systemctl is-active --quiet "$SERVICE" 2>/dev/null; then
-    health_fail=1; echo "bad: $SERVICE not active"
-  else
-    echo "ok: $SERVICE active"
-  fi
-  if ! systemctl is-enabled --quiet "$SERVICE" 2>/dev/null; then
-    health_fail=1; echo "bad: $SERVICE not enabled"
-  fi
-
-  # Crash-loop detection: if systemd restarted the unit many times recently it
-  # is unstable even if momentarily active. NRestarts is a monotonic counter.
-  nrestarts="$(systemctl show "$SERVICE" -p NRestarts --value 2>/dev/null | tr -d '[:space:]')"
-  [ "${nrestarts:-0}" -lt 5 ] || { health_fail=1; echo "bad: $SERVICE crash-looping (NRestarts=$nrestarts)"; }
-
-  exit "$health_fail"
-fi
-
-case "$MODE" in
-  install|reinstall)
-    ;;
-  *)
-    fail "invalid mode '$MODE' (expected 'check', 'install', or 'reinstall')"
-    ;;
-esac
 case "$CHANNEL" in
   stable|beta)
     ;;

@@ -10,17 +10,19 @@ SteamDeckHomebrew GitHub installer) only if it is missing or broken.**
 
 ## What it checks
 
-The health check runs in **two stages**:
+The health check is deliberately simple — Decky is considered **installed and
+healthy** when both are present:
 
-1. **Fast user-level proxy** — the loader binary exists/executable and the
-   systemd unit file is present on disk (catches the "wiped after update" case).
-2. **Privileged runtime check** — delegated to a root helper that inspects the
-   real system service: is it `active`, `enabled`, a non-trivial binary size
-   (not truncated), has a completed `.loader.version`, and is it **not
-   crash-looping** (`NRestarts < 5`). This catches Decky "being broken" even
-   when the files are present.
+1. The loader binary exists and is executable (`~/homebrew/services/PluginLoader`).
+2. The systemd unit file exists on disk (`/etc/systemd/system/plugin_loader.service`).
 
-If any check fails, it re-runs the official installer and restarts the service.
+The system service uses `Restart=always`, so the file-level check is the
+reliable, low-privilege signal that Decky is installed and wired up — it
+catches the common "wiped after an update" case without needing periodic
+privileged probes.
+
+If either check fails, it re-runs the official installer and restarts the
+service.
 
 Additionally, Decky Guard **detects Steam channel changes** (stable ↔ beta): if
 you switch Steam client channels, the installed Decky build is compared against
@@ -95,7 +97,7 @@ decky-guard/
 ├── remote_install.sh            # curl one-shot installer
 ├── scripts/
 │   ├── decky-guard.sh           # user-level health check + trigger
-│   └── decky-guard-root.sh      # root helper (install / check), scoped-sudo target
+│   └── decky-guard-root.sh      # root helper (re)install, scoped-sudo target
 └── systemd/
     └── decky-guard.service      # one-shot unit, once per login (graphical-session)
 ```
@@ -105,7 +107,7 @@ decky-guard/
 | Source | Installed to | Purpose |
 | ------ | ------------ | ------- |
 | `scripts/decky-guard.sh` | `~/.local/bin/decky-guard.sh` | decides channel, checks health, triggers install |
-| `scripts/decky-guard-root.sh` | `~/.local/bin/decky-guard-root.sh` | runs the official installer / deep check as root |
+| `scripts/decky-guard-root.sh` | `~/.local/bin/decky-guard-root.sh` | runs the official installer as root |
 | `systemd/decky-guard.service` | `~/.config/systemd/user/decky-guard.service` | runs the check once per login |
 | — | `/etc/sudoers.d/decky-guard` | passwordless sudo for the single helper |
 
@@ -114,9 +116,6 @@ decky-guard/
 ```sh
 # run the check manually (loud) — will reinstall Decky if unhealthy
 ~/.local/bin/decky-guard.sh
-
-# deep-check only (no install), as the root helper sees it
-sudo ~/.local/bin/decky-guard-root.sh check
 
 # view the log
 tail -f ~/.local/state/decky-guard/decky-guard.log
@@ -173,8 +172,8 @@ is exactly what the `atomic-update.conf.d` registration protects.
 ## Security notes
 
 - Passwordless sudo is **scoped to a single helper** (`decky-guard-root.sh`).
-  The helper only accepts `check`, `install`, or `reinstall` with a validated
-  `stable`/`beta` channel, and is otherwise self-contained.
+  The helper only accepts a validated `stable`/`beta` channel and is otherwise
+  self-contained.
 - The user and home directory are always computed at runtime — no hardcoded
   username.
 

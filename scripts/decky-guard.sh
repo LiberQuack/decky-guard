@@ -84,24 +84,14 @@ branch_mismatch() {
 
 # ---------------------------------------------------------------------------
 # 2. Health check.
-#    Two stages:
-#      (a) fast user-level proxy — loader binary present/executable and the
-#          systemd system unit file exists on disk. plugin_loader is a SYSTEM
-#          service, so a regular user cannot query its run state here; the
-#          file-level check catches the "wiped after update" case.
-#      (b) deep runtime check delegated to the ROOT helper, which CAN inspect
-#          the real system service: is it active, enabled, non-trivial sized,
-#          and not crash-looping. This catches Decky "being broken" even when
-#          the files are present (e.g. crash loops, truncated binary).
+#    Simple file-based check: the loader binary exists/executable and the
+#    systemd system unit file is present on disk. plugin_loader is a SYSTEM
+#    service that restarts itself (Restart=always), so a regular user checking
+#    files is the reliable and simple signal for "is Decky installed" — the
+#    branch-mismatch check above already handles reinstalling the correct build.
 # ---------------------------------------------------------------------------
 is_healthy() {
-  [ -x "$PLUGIN_LOADER" ] || return 1
-  [ -f "/etc/systemd/system/${SERVICE}.service" ] || return 1
-  # Deep, privileged runtime check (no install performed in 'check' mode).
-  if ! sudo -n -u root "$ROOT_HELPER" check >/dev/null 2>&1; then
-    return 1
-  fi
-  return 0
+  [ -x "$PLUGIN_LOADER" ] && [ -f "/etc/systemd/system/${SERVICE}.service" ]
 }
 
 # ---------------------------------------------------------------------------
@@ -110,7 +100,7 @@ is_healthy() {
 run_root_install() {
   local channel="$1"
   # shellcheck disable=SC2024
-  if ! sudo -n -u root "$ROOT_HELPER" install "$channel"; then
+  if ! sudo -n -u root "$ROOT_HELPER" "$channel"; then
     log "decky-guard: install failed (sudo/helper). Check /etc/sudoers.d/decky-guard and the helper."
     return 1
   fi
