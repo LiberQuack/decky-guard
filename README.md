@@ -22,6 +22,11 @@ The health check runs in **two stages**:
 
 If any check fails, it re-runs the official installer and restarts the service.
 
+Additionally, Decky Guard **detects Steam channel changes** (stable ↔ beta): if
+you switch Steam client channels, the installed Decky build is compared against
+the build that should be installed, and Decky is automatically reinstalled with
+the matching build even if it looks healthy otherwise.
+
 ## Channel policy
 
 The installed Decky build is matched to the Steam client channel, auto-detected
@@ -31,6 +36,10 @@ from `~/.steam/steam/package/beta`:
 | ------------------------------- | --------------------- |
 | stable / default (no beta file) | latest **stable**     |
 | `*beta*`                        | latest **prerelease** |
+
+The currently-installed Decky branch is derived from `~/homebrew/services/.loader.version`
+(pre-release tags contain `-pre`; stable tags do not). If the Steam channel and
+installed branch disagree, Decky Guard reinstalls the correct build.
 
 ## Requirements
 
